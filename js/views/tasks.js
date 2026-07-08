@@ -19,9 +19,15 @@ export async function renderTasks() {
   ];
 
   const container = h('div');
+  const formSlot = h('div');
 
   const draw = () => {
-    clear(container).append(viewMode === 'board' ? board(tasks, redraw) : list(tasks, redraw));
+    toggle.textContent = viewMode === 'board' ? 'List view' : 'Board view';
+    clear(container).append(
+      !tasks.length
+        ? h('div.card', {}, h('div.hint', { style: 'margin:0' }, 'No tasks yet — create the first one with “+ New task”.'))
+        : viewMode === 'board' ? board(tasks, redraw) : list(tasks, redraw),
+    );
   };
   async function redraw() {
     // re-render whole route for fresh data
@@ -30,7 +36,7 @@ export async function renderTasks() {
 
   const toggle = h('button', {
     onclick: () => { viewMode = viewMode === 'board' ? 'list' : 'board'; draw(); },
-  }, viewMode === 'board' ? 'List view' : 'Board view');
+  });
 
   draw();
 
@@ -39,11 +45,18 @@ export async function renderTasks() {
       h('h1', {}, 'Tasks'),
       h('div.grow'),
       toggle,
-      h('button', { class: 'primary', onclick: () => quickCreate(collaborators) }, '+ New task'),
+      h('button', {
+        class: 'primary',
+        onclick: () => {
+          if (formSlot.firstChild) clear(formSlot);
+          else formSlot.append(taskForm(collaborators, () => clear(formSlot)));
+        },
+      }, '+ New task'),
     ),
     h('div.meta-line', {},
       `${tasks.filter((t) => t.status !== 'done').length} open · also visible as `,
       h('a', { href: issuesUrl(), target: '_blank', rel: 'noopener' }, 'GitHub Issues'), '.'),
+    formSlot,
     container,
   );
 }
@@ -77,25 +90,42 @@ async function setStatus(task, status, redraw) {
   }
 }
 
-async function quickCreate(collaborators) {
-  const title = prompt('Task title:');
-  if (!title) return;
-  let assignee = '';
-  if (collaborators.length) {
-    const names = collaborators.map((c) => c.login).join(', ');
-    assignee = prompt(`Assign to (blank for nobody): ${names}`, '') || '';
-  }
-  const due = prompt('Due date YYYY-MM-DD (blank for none):', '') || '';
-  try {
-    await createIssue(title, {
-      assignees: assignee ? [assignee.trim()] : [],
-      body: due ? `due: ${due.trim()}` : '',
-    });
-    toast('Task created ✓');
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
-  } catch (err) {
-    toast(`Couldn't create task: ${err.message}`, 'error');
-  }
+function taskForm(collaborators, onClose) {
+  const title = h('input', { type: 'text', placeholder: 'Task title', autocomplete: 'off' });
+  const assignee = h('select', {},
+    h('option', { value: '' }, 'unassigned'),
+    collaborators.map((c) => h('option', { value: c.login }, `@${c.login}`)));
+  const due = h('input', { type: 'date', title: 'due date (optional)' });
+  const create = h('button', { class: 'primary' }, 'Create');
+
+  const submit = async () => {
+    if (!title.value.trim()) { title.focus(); return; }
+    create.disabled = true;
+    try {
+      await createIssue(title.value.trim(), {
+        assignees: assignee.value ? [assignee.value] : [],
+        body: due.value ? `due: ${due.value}` : '',
+      });
+      toast('Task created ✓');
+      onClose();
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    } catch (err) {
+      create.disabled = false;
+      toast(`Couldn't create task: ${err.message}`, 'error');
+    }
+  };
+  create.addEventListener('click', submit);
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+  const form = h('div.card.task-form', {},
+    title,
+    collaborators.length ? assignee : null,
+    due,
+    create,
+    h('button', { onclick: onClose }, 'Cancel'),
+  );
+  setTimeout(() => title.focus(), 0);
+  return form;
 }
 
 // ---------- board ----------
