@@ -2,11 +2,18 @@
 // except the token being sent to api.github.com over HTTPS.
 const KEY = 'logbook.config';
 
+// This deployment is pinned to the team's data repo — members only supply a
+// token. Deploying for another team means changing these two values.
+export const FIXED = {
+  repo: 'uchicago-xlab/TeachingClaudeWhy',
+  root: 'notes',
+};
+
 export function loadConfig() {
   try {
-    return JSON.parse(localStorage.getItem(KEY)) || {};
+    return { ...(JSON.parse(localStorage.getItem(KEY)) || {}), ...FIXED };
   } catch {
-    return {};
+    return { ...FIXED };
   }
 }
 

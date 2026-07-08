@@ -1,23 +1,16 @@
-// First-run setup / settings: data repo + fine-grained personal access token.
+// First-run setup / settings: paste a fine-grained personal access token.
+// The data repo and notes folder are pinned in config.js (FIXED).
 import { h } from '../ui.js';
-import { loadConfig, saveConfig, clearConfig } from '../config.js';
+import { FIXED, loadConfig, saveConfig, clearConfig } from '../config.js';
 import { getUser, getRepo } from '../github.js';
 import { state } from '../state.js';
 
 export function renderSetup(onDone) {
   const cfg = loadConfig();
 
-  const repoInput = h('input', {
-    type: 'text', placeholder: 'your-org/research-notes', value: cfg.repo || '',
-    autocomplete: 'off', spellcheck: 'false',
-  });
   const tokenInput = h('input', {
     type: 'password', placeholder: 'github_pat_…', value: cfg.token || '',
     autocomplete: 'off',
-  });
-  const rootInput = h('input', {
-    type: 'text', placeholder: 'e.g. notes (optional)', value: cfg.root || '',
-    autocomplete: 'off', spellcheck: 'false',
   });
   const errBox = h('div');
   const btn = h('button', { class: 'primary' }, 'Connect');
@@ -27,11 +20,7 @@ export function renderSetup(onDone) {
     errBox.className = '';
     btn.disabled = true;
     btn.textContent = 'Checking…';
-    saveConfig({
-      repo: repoInput.value.trim(),
-      token: tokenInput.value.trim(),
-      root: rootInput.value.trim().replace(/^\/+|\/+$/g, ''),
-    });
+    saveConfig({ token: tokenInput.value.trim() });
     try {
       const user = await getUser();
       await getRepo(); // throws if the token can't see the repo
@@ -43,7 +32,7 @@ export function renderSetup(onDone) {
       errBox.textContent = err.status === 401
         ? 'GitHub rejected the token. Double-check you copied the whole thing.'
         : err.status === 404
-          ? `Token works, but it can't see "${repoInput.value.trim()}". Check the repo name, and that the token was granted access to this specific repository.`
+          ? `Token works, but it can't see ${FIXED.repo}. When creating it, set Resource owner to ${FIXED.repo.split('/')[0]} and grant access to that specific repository (step 2 below).`
           : `Couldn't connect: ${err.message}`;
     } finally {
       btn.disabled = false;
@@ -51,30 +40,33 @@ export function renderSetup(onDone) {
     }
   });
 
+  const [owner, repoName] = FIXED.repo.split('/');
+
   return h('div.setup-shell', {},
     h('div.logo', {}, 'Logbook'),
     h('p', { style: 'color:var(--muted)' },
-      'Your team’s research notes and tasks, stored in a GitHub repo. One-time setup, takes about two minutes.'),
+      'The team’s research notes and tasks. Paste your GitHub token to ' +
+      'connect — one-time setup, takes about two minutes.'),
 
     h('div.card', {},
-      h('label', {}, '1. Team data repository'),
-      repoInput,
-      h('div.hint', {}, 'The private repo where notes and tasks live, as owner/name.'),
-
-      h('label', {}, '2. Your personal access token'),
+      h('label', {}, 'Your personal access token'),
       tokenInput,
       h('div.hint', { html:
-        'Create one at GitHub → Settings → Developer settings → ' +
-        '<b>Fine-grained tokens</b> → Generate new token. Set <b>Repository access</b> to ' +
-        'only the repo above, and under Permissions grant <b>Contents: Read and write</b> ' +
-        'and <b>Issues: Read and write</b>. The token stays in this browser only.' }),
-
-      h('label', {}, '3. Notes folder — only if notes share a repo with code'),
-      rootInput,
-      h('div.hint', {},
-        'Leave blank if the whole repo is for notes. If the repo also holds code, ' +
-        'put notes under a subfolder (e.g. "notes") and name it here — workspaces, ' +
-        'pages, and the activity feed will all stay inside it.'),
+        '<b>How to get one:</b>' +
+        '<ol style="margin:6px 0 0 18px; padding:0; display:grid; gap:4px">' +
+        '<li>Open <a href="https://github.com/settings/personal-access-tokens/new" ' +
+        'target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a> ' +
+        '(GitHub → Settings → Developer settings → Fine-grained tokens).</li>' +
+        `<li>Set <b>Resource owner</b> to <b>${owner}</b> — not your personal ` +
+        'account. This is the step everyone misses.</li>' +
+        '<li><b>Repository access</b>: <i>Only select repositories</i> → ' +
+        `<b>${repoName}</b>.</li>` +
+        '<li>Under <b>Permissions → Repository permissions</b>, grant ' +
+        '<b>Contents: Read and write</b> and <b>Issues: Read and write</b>. ' +
+        'Nothing else.</li>' +
+        '<li>Generate, copy the <code>github_pat_…</code> string, paste it above.</li>' +
+        '</ol>' +
+        'The token stays in this browser only and is sent exclusively to GitHub.' }),
 
       h('div', { style: 'margin-top:18px' }, btn),
       errBox,
