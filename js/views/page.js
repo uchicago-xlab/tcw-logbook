@@ -1,6 +1,6 @@
 // Page view + editor. Every save is a commit; conflicts are detected via the
 // file's sha (if someone else saved since you opened it, GitHub returns 409).
-import { h, chip, toast, timeago } from '../ui.js';
+import { h, clear, chip, toast, timeago } from '../ui.js';
 import { getFile, putFile, getFileAsObjectURL } from '../github.js';
 import { render, parseFrontMatter } from '../markdown.js';
 import { currentUser } from '../state.js';
@@ -16,19 +16,87 @@ export async function renderPage(path, editing) {
 function viewer(path, file) {
   const { meta, body } = parseFrontMatter(file.text);
   const folder = path.split('/')[0];
-  const md = h('div.md', { html: render(body) });
-  hydrateImages(md, path);
+  const isMap = (meta.view || '').toLowerCase() === 'map';
+  let asMap = isMap;
+
+  const content = h('div');
+  const drawBody = () => {
+    if (asMap) {
+      clear(content).append(mapView(body, path));
+    } else {
+      const md = h('div.md', { html: render(body) });
+      hydrateImages(md, path);
+      clear(content).append(h('div.card', {}, md));
+    }
+    if (modeBtn) modeBtn.textContent = asMap ? 'Document view' : 'Map view';
+  };
+  const modeBtn = isMap
+    ? h('button', { onclick: () => { asMap = !asMap; drawBody(); } })
+    : null;
+  drawBody();
 
   return h('div', {},
     h('div.page-head', {},
       h('h1', {}, titleOf(path)),
       chip(meta.status),
       h('div.grow'),
+      modeBtn,
       h('button', { class: 'primary', onclick: () => { location.hash = `#/e/${enc(path)}`; } }, 'Edit'),
     ),
     h('div.meta-line', {},
       h('a', { href: `#/w/${encodeURIComponent(folder)}` }, folder), ` / ${path.split('/').slice(1).join('/')}`),
-    h('div.card', {}, md),
+    content,
+  );
+}
+
+// ---------- map view ----------
+// A page with `view: map` front matter renders as side-by-side columns of
+// cards (Miro-style): each `## heading` starts a column, `---` lines split
+// cards within it. The same markdown reads fine as a linear document.
+function mapView(body, path) {
+  const clusters = [];
+  let cur = null;
+  let buf = [];
+  const flush = () => {
+    if (cur && buf.join('\n').trim()) cur.cards.push(buf.join('\n'));
+    buf = [];
+  };
+  for (const line of body.split('\n')) {
+    const head = line.match(/^##\s+(.*)$/);
+    if (head) { flush(); cur = { title: head[1], cards: [] }; clusters.push(cur); }
+    else if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { flush(); }
+    else if (cur || line.trim()) {
+      if (!cur) { cur = { title: '', cards: [] }; clusters.push(cur); }
+      buf.push(line);
+    }
+  }
+  flush();
+
+  const row = h('div.maprow', {}, clusters.filter((c) => c.title || c.cards.length).map((c) =>
+    h('div.mapcol', {},
+      c.title ? h('div.mapcol-title', {}, c.title) : null,
+      c.cards.map((cardMd) => {
+        const inner = h('div.md', { html: render(cardMd) });
+        hydrateImages(inner, path);
+        return h('div.card.mapcard', {}, inner);
+      }),
+    )));
+
+  let zoom = 1;
+  const pct = h('span.mapzoom-pct', {}, '100%');
+  const setZoom = (z) => {
+    zoom = Math.min(1.5, Math.max(0.5, Math.round(z * 10) / 10));
+    row.style.zoom = zoom;
+    pct.textContent = `${Math.round(zoom * 100)}%`;
+  };
+  return h('div', {},
+    h('div.mapzoom', {},
+      h('button', { onclick: () => setZoom(zoom - 0.1) }, '−'),
+      pct,
+      h('button', { onclick: () => setZoom(zoom + 0.1) }, '+'),
+      h('span.hint', { style: 'margin:0 0 0 10px' }, `${clusters.length} columns · scroll sideways`),
+    ),
+    h('div.mapwrap', {}, row),
   );
 }
 
@@ -74,7 +142,9 @@ function editor(path, file) {
   async function save() {
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving…';
-    const front = `---\nstatus: ${statusSel.value}\n---\n\n`;
+    // keep any other front-matter keys (e.g. view: map), only status changes
+    const kv = { ...meta, status: statusSel.value };
+    const front = `---\n${Object.entries(kv).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n\n`;
     const user = await currentUser().catch(() => null);
     try {
       const res = await putFile(path, front + ta.value.replace(/^\n+/, ''),
