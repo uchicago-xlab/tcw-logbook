@@ -14,6 +14,9 @@ async function gh(path, { method = 'GET', body, raw = false } = {}) {
   const url = path.startsWith('http') ? path : `${apiBase()}${path.replace('{repo}', repo || '')}`;
   const res = await fetch(url, {
     method,
+    // GitHub sends Cache-Control: max-age=60; without no-store the browser
+    // serves stale lists (e.g. the task board) for up to a minute after edits.
+    cache: 'no-store',
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: 'application/vnd.github+json',

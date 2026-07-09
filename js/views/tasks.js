@@ -40,6 +40,14 @@ export async function renderTasks() {
 
   draw();
 
+  // keep an open board fresh: re-render the route every 30s while it's
+  // visible, unless the create form is open (that would wipe typed input)
+  const refreshTimer = setInterval(() => {
+    if (!document.body.contains(container)) { clearInterval(refreshTimer); return; }
+    if (formSlot.firstChild || document.hidden) return;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }, 30000);
+
   return h('div', {},
     h('div.page-head', {},
       h('h1', {}, 'Tasks'),
