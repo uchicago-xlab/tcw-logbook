@@ -1,37 +1,70 @@
 // Tasks = GitHub Issues. One entity, two views (list & board).
 // status: open issue → todo; open + "doing" label → doing; closed → done.
+// Moves are optimistic: the card jumps immediately, the API call follows,
+// and a failure snaps it back with an error toast.
 import { h, clear, chip, toast, timeago } from '../ui.js';
 import { listIssues, createIssue, updateIssue, getCollaborators } from '../github.js';
 import { loadConfig } from '../config.js';
+import { cached, revalidate, invalidate } from '../cache.js';
 
 let viewMode = 'board'; // remembered per session
 
-export async function renderTasks() {
+const fetchAll = async () => {
   const [open, closed, collaborators] = await Promise.all([
     listIssues('open'),
     listIssues('closed'),
     getCollaborators().catch(() => []),
   ]);
+  return { open, closed, collaborators };
+};
 
-  const tasks = [
-    ...open.filter((i) => !i.pull_request).map((i) => toTask(i, hasLabel(i, 'doing') ? 'doing' : 'todo')),
-    ...closed.filter((i) => !i.pull_request).slice(0, 20).map((i) => toTask(i, 'done')),
-  ];
-
+export async function renderTasks() {
   const container = h('div');
   const formSlot = h('div');
+  const count = h('span');
+  let tasks = [];
+  let pending = 0; // optimistic moves still awaiting the API
 
-  const draw = () => {
+  // Redraw from a background refetch — but never over an open form or an
+  // in-flight move; the fresh data is already cached for the next render.
+  function applyFresh(data) {
+    if (!document.body.contains(container) || formSlot.firstChild || pending) return;
+    tasks = toTasks(data);
+    draw();
+  }
+
+  const data = await cached('tasks', fetchAll, applyFresh);
+  tasks = toTasks(data);
+
+  function draw() {
     toggle.textContent = viewMode === 'board' ? 'List view' : 'Board view';
+    count.textContent = `${tasks.filter((t) => t.status !== 'done').length} open`;
     clear(container).append(
       !tasks.length
         ? h('div.card', {}, h('div.hint', { style: 'margin:0' }, 'No tasks yet — create the first one with “+ New task”.'))
-        : viewMode === 'board' ? board(tasks, redraw) : list(tasks, redraw),
+        : viewMode === 'board' ? board(tasks, move) : list(tasks, move),
     );
-  };
-  async function redraw() {
-    // re-render whole route for fresh data
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  }
+
+  // Optimistic: move the card now, tell GitHub after, revert on failure.
+  async function move(task, status) {
+    const prev = task.status;
+    task.status = status;
+    pending += 1;
+    draw();
+    try {
+      if (status === 'done') await updateIssue(task.number, { state: 'closed' });
+      else if (status === 'doing') await updateIssue(task.number, { state: 'open', labels: ['doing'] });
+      else await updateIssue(task.number, { state: 'open', labels: [] });
+      // bring the cache up to server truth in the background
+      revalidate('tasks', fetchAll).then((fresh) => fresh && applyFresh(fresh)).catch(() => {});
+    } catch (err) {
+      task.status = prev;
+      draw();
+      toast(`Couldn't update: ${err.message}`, 'error');
+    } finally {
+      pending -= 1;
+    }
   }
 
   const toggle = h('button', {
@@ -40,12 +73,12 @@ export async function renderTasks() {
 
   draw();
 
-  // keep an open board fresh: re-render the route every 30s while it's
-  // visible, unless the create form is open (that would wipe typed input)
+  // keep an open board fresh: quietly revalidate every 30s while visible;
+  // applyFresh decides whether it's safe to redraw
   const refreshTimer = setInterval(() => {
     if (!document.body.contains(container)) { clearInterval(refreshTimer); return; }
-    if (formSlot.firstChild || document.hidden) return;
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    if (document.hidden) return;
+    revalidate('tasks', fetchAll).then((fresh) => fresh && applyFresh(fresh)).catch(() => {});
   }, 30000);
 
   return h('div', {},
@@ -57,16 +90,23 @@ export async function renderTasks() {
         class: 'primary',
         onclick: () => {
           if (formSlot.firstChild) clear(formSlot);
-          else formSlot.append(taskForm(collaborators, () => clear(formSlot)));
+          else formSlot.append(taskForm(data.collaborators, () => clear(formSlot)));
         },
       }, '+ New task'),
     ),
     h('div.meta-line', {},
-      `${tasks.filter((t) => t.status !== 'done').length} open · also visible as `,
+      count, ' · also visible as ',
       h('a', { href: issuesUrl(), target: '_blank', rel: 'noopener' }, 'GitHub Issues'), '.'),
     formSlot,
     container,
   );
+}
+
+function toTasks({ open, closed }) {
+  return [
+    ...open.filter((i) => !i.pull_request).map((i) => toTask(i, hasLabel(i, 'doing') ? 'doing' : 'todo')),
+    ...closed.filter((i) => !i.pull_request).slice(0, 20).map((i) => toTask(i, 'done')),
+  ];
 }
 
 function toTask(issue, status) {
@@ -85,19 +125,6 @@ function toTask(issue, status) {
 const hasLabel = (issue, name) => (issue.labels || []).some((l) => l.name === name);
 const issuesUrl = () => `https://github.com/${loadConfig().repo}/issues`;
 
-// ---------- mutations ----------
-async function setStatus(task, status, redraw) {
-  try {
-    if (status === 'done') await updateIssue(task.number, { state: 'closed' });
-    else if (status === 'doing') await updateIssue(task.number, { state: 'open', labels: ['doing'] });
-    else await updateIssue(task.number, { state: 'open', labels: [] });
-    toast(`→ ${status}`);
-    redraw();
-  } catch (err) {
-    toast(`Couldn't update: ${err.message}`, 'error');
-  }
-}
-
 function taskForm(collaborators, onClose) {
   const title = h('input', { type: 'text', placeholder: 'Task title', autocomplete: 'off' });
   const assignee = h('select', {},
@@ -114,6 +141,7 @@ function taskForm(collaborators, onClose) {
         assignees: assignee.value ? [assignee.value] : [],
         body: due.value ? `due: ${due.value}` : '',
       });
+      invalidate('tasks'); // force a fresh list on the re-render
       toast('Task created ✓');
       onClose();
       window.dispatchEvent(new HashChangeEvent('hashchange'));
@@ -137,9 +165,9 @@ function taskForm(collaborators, onClose) {
 }
 
 // ---------- board ----------
-function board(tasks, redraw) {
+function board(tasks, move) {
   const cols = ['todo', 'doing', 'done'].map((status) => {
-    const cards = tasks.filter((t) => t.status === status).map((t) => card(t, redraw));
+    const cards = tasks.filter((t) => t.status === status).map((t) => card(t, move));
     return h('div.col', {},
       h('h3', {}, `${status} (${cards.length})`),
       cards.length ? cards : h('div.hint', { style: 'padding:4px 6px' }, '—'),
@@ -148,7 +176,7 @@ function board(tasks, redraw) {
   return h('div.board', {}, cols);
 }
 
-function card(t, redraw) {
+function card(t, move) {
   const moves = {
     todo: [['start →', 'doing']],
     doing: [['← todo', 'todo'], ['done ✓', 'done']],
@@ -161,19 +189,19 @@ function card(t, redraw) {
       t.due ? h('span', { style: overdue(t) ? 'color:#b91c1c;font-weight:600' : '' }, `due ${t.due}`) : null,
     ),
     h('div.movers', {}, moves.map(([label, to]) =>
-      h('button', { onclick: () => setStatus(t, to, redraw) }, label))),
+      h('button', { onclick: () => move(t, to) }, label))),
   );
 }
 
 // ---------- list ----------
-function list(tasks, redraw) {
+function list(tasks, move) {
   const groups = ['doing', 'todo', 'done'];
   return h('div.card.rowlist', {}, groups.flatMap((status) => {
     const rows = tasks.filter((t) => t.status === status).map((t) =>
       h('div.row', {},
         h('input', {
           type: 'checkbox', ...(status === 'done' ? { checked: true } : {}),
-          onchange: () => setStatus(t, status === 'done' ? 'todo' : 'done', redraw),
+          onchange: () => move(t, status === 'done' ? 'todo' : 'done'),
         }),
         h('div.grow', {},
           h('a', { href: t.url, target: '_blank', rel: 'noopener', style: 'color:inherit' }, t.title),

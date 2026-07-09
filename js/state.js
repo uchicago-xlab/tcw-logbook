@@ -1,5 +1,6 @@
 // Tiny shared session state (workspace list for the sidebar, cached user).
 import { listDir, getUser } from './github.js';
+import { cached } from './cache.js';
 
 export const state = {
   workspaces: [],
@@ -9,14 +10,22 @@ export const state = {
 
 const IGNORED = new Set(['assets', '.github', 'starter']);
 
-export async function refreshWorkspaces() {
-  const items = await listDir('');
-  state.workspaces = items
-    .filter((i) => i.type === 'dir' && !i.name.startsWith('.') && !IGNORED.has(i.name))
-    .map((i) => i.name)
-    .sort((a, b) => (a === 'project' ? -1 : b === 'project' ? 1 : a.localeCompare(b)));
-  state.workspacesLoaded = true;
-  return state.workspaces;
+// Resolves with the cached list when there is one (a background refetch
+// updates state and fires onChange if the list actually changed).
+export async function refreshWorkspaces(onChange) {
+  const apply = (names) => {
+    state.workspaces = names;
+    state.workspacesLoaded = true;
+  };
+  const names = await cached('workspaces', async () => {
+    const items = await listDir('');
+    return items
+      .filter((i) => i.type === 'dir' && !i.name.startsWith('.') && !IGNORED.has(i.name))
+      .map((i) => i.name)
+      .sort((a, b) => (a === 'project' ? -1 : b === 'project' ? 1 : a.localeCompare(b)));
+  }, (fresh) => { apply(fresh); if (onChange) onChange(); });
+  apply(names);
+  return names;
 }
 
 export async function currentUser() {

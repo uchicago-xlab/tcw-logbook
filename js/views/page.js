@@ -4,12 +4,19 @@ import { h, clear, chip, toast, timeago } from '../ui.js';
 import { getFile, putFile, deleteFile, getFileAsObjectURL } from '../github.js';
 import { render, parseFrontMatter } from '../markdown.js';
 import { currentUser, state, refreshWorkspaces } from '../state.js';
+import { cached, invalidate } from '../cache.js';
 
 const STATUSES = ['active', 'paused', 'done'];
 
 export async function renderPage(path, editing) {
-  const file = await getFile(path);
-  return editing ? editor(path, file) : viewer(path, file);
+  // The editor always fetches fresh: its sha drives conflict detection.
+  if (editing) return editor(path, await getFile(path));
+  const myHash = location.hash;
+  const file = await cached(`page:${path}`, () => getFile(path), () => {
+    // changed upstream — re-render (from the now-fresh cache) if still open
+    if (location.hash === myHash) window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
+  return viewer(path, file);
 }
 
 // ---------- viewer ----------
@@ -91,6 +98,8 @@ function moveForm(path, file, onClose) {
     } catch (err) {
       toast(`Copied to ${dest}, but couldn't remove the original: ${err.message}`, 'error');
     }
+    invalidate(`page:${path}`);
+    invalidate(`page:${target}`);
     onClose();
     state.workspacesLoaded = false; // sidebar counts may shift
     location.hash = `#/p/${enc(target)}`;
@@ -205,6 +214,7 @@ function editor(path, file) {
         `Edit ${titleOf(path)}${user ? ` (by @${user.login})` : ''}`, sha);
       sha = res.content.sha;
       dirty = false;
+      invalidate(`page:${path}`); // viewer cache is now stale
       saveBtn.textContent = 'Save';
       toast('Saved ✓');
     } catch (err) {

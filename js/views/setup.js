@@ -2,6 +2,7 @@
 // The data repo and notes folder are pinned in config.js (FIXED).
 import { h } from '../ui.js';
 import { FIXED, loadConfig, saveConfig, clearConfig } from '../config.js';
+import { clearCache } from '../cache.js';
 import { getUser, getRepo } from '../github.js';
 import { state } from '../state.js';
 
@@ -74,7 +75,7 @@ export function renderSetup(onDone) {
 
     loadConfig().token ? h('div', { style: 'text-align:center' },
       h('button', {
-        onclick: () => { clearConfig(); location.reload(); },
+        onclick: () => { clearConfig(); clearCache(); location.reload(); },
       }, 'Sign out / clear saved token'),
     ) : null,
   );

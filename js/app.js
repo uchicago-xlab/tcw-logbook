@@ -1,6 +1,6 @@
 // Logbook — entry point, hash router, and layout shell.
 import { isConfigured, loadConfig } from './config.js';
-import { h, clear } from './ui.js';
+import { h, clear, spinner } from './ui.js';
 import { renderSetup } from './views/setup.js';
 import { renderHome } from './views/home.js';
 import { renderWorkspace } from './views/workspace.js';
@@ -11,9 +11,21 @@ import { state, refreshWorkspaces } from './state.js';
 
 const app = document.getElementById('app');
 
-function layout(main) {
-  clear(app);
-  app.append(sidebar(), h('div', { id: 'main' }, main));
+// Navigation token: each route() run takes a fresh one; async work that
+// finishes after another navigation started sees a mismatch and gives up.
+let nav = 0;
+
+function redrawSidebar() {
+  const old = document.getElementById('sidebar');
+  if (old) old.replaceWith(sidebar());
+}
+
+function setMain(view) {
+  const main = document.getElementById('main');
+  if (!main) return;
+  const swap = () => { clear(main).append(view); };
+  if (document.startViewTransition) document.startViewTransition(swap); // crossfade where supported
+  else swap();
 }
 
 function sidebar() {
@@ -43,6 +55,7 @@ function sidebar() {
 }
 
 async function route() {
+  const token = ++nav;
   if (!isConfigured() && location.hash !== '#/settings') {
     clear(app).append(renderSetup(() => { location.hash = '#/'; route(); }));
     return;
@@ -51,9 +64,21 @@ async function route() {
   const hash = location.hash.replace(/^#\/?/, '');
   const [head, ...rest] = hash.split('/');
 
-  // Load workspace list once per session (sidebar needs it everywhere).
+  // Shell first: the sidebar tracks the route immediately; the old view
+  // stays put and falls back to a spinner only if data is slow, so cached
+  // navigations never flash a skeleton.
+  if (document.getElementById('main')) redrawSidebar();
+  else clear(app).append(sidebar(), h('div', { id: 'main' }));
+  let settled = false;
+  setTimeout(() => { if (!settled && token === nav) setMain(spinner()); }, 120);
+
+  // Load workspace list once per session (sidebar needs it everywhere) —
+  // instant from cache after the first load; redraw when it lands/changes.
   if (isConfigured() && !state.workspacesLoaded) {
-    try { await refreshWorkspaces(); } catch { /* surfaced by views */ }
+    try {
+      await refreshWorkspaces(() => { if (token === nav) redrawSidebar(); });
+      if (token === nav) redrawSidebar();
+    } catch { /* surfaced by views */ }
   }
 
   let view;
@@ -66,7 +91,9 @@ async function route() {
   else if (head === 'settings') view = renderSetup(() => { location.hash = '#/'; });
   else view = h('div', {}, 'Not found. ', h('a', { href: '#/' }, 'Go home'));
 
-  layout(view);
+  settled = true;
+  if (token !== nav) return; // user already navigated elsewhere
+  setMain(view);
 }
 
 async function safe(fn) {

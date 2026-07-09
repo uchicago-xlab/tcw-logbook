@@ -228,6 +228,13 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 .board .movers button { padding: 1px 9px; font-size: 12px; }
 
 /* ---------- misc ---------- */
+.skeleton { display: grid; gap: 9px; padding: 6px 0; }
+.skeleton-line { height: 11px; border-radius: 6px; background: var(--panel2); animation: skeleton-pulse 1.4s ease-in-out infinite; }
+.skeleton-line:nth-child(2) { width: 82%; }
+.skeleton-line:nth-child(3) { width: 58%; }
+.skeleton-chip { display: inline-block; width: 46px; height: 17px; border-radius: 9px; background: var(--panel2); animation: skeleton-pulse 1.4s ease-in-out infinite; }
+@keyframes skeleton-pulse { 50% { opacity: .35; } }
+
 .spinner { color: var(--muted); padding: 30px 0; display: flex; gap: 10px; align-items: center; }
 .spinner .dot {
   width: 14px; height: 14px;

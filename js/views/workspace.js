@@ -1,4 +1,6 @@
 // A member's workspace: their markdown pages (one folder, optional subfolders).
+// Rows render as soon as the directory listing is in; the status chips need a
+// getFile per page for front matter, so they stream in afterwards.
 import { h, chip, toast } from '../ui.js';
 import { listDir, getFile, putFile } from '../github.js';
 import { parseFrontMatter } from '../markdown.js';
@@ -6,40 +8,32 @@ import { currentUser } from '../state.js';
 
 export async function renderWorkspace(folder) {
   const entries = await listDirSafe(folder);
-  const pages = [];
-  const dirs = [];
-  for (const e of entries) {
-    if (e.type === 'dir') dirs.push(e);
-    else if (e.name.endsWith('.md')) pages.push(e);
-  }
-  // one level of subfolders
-  for (const d of dirs) {
-    if (d.name === 'assets') continue;
-    for (const e of await listDirSafe(`${folder}/${d.name}`)) {
-      if (e.type === 'file' && e.name.endsWith('.md')) pages.push(e);
-    }
+  const pages = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md'));
+  // one level of subfolders, listed in parallel
+  const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
+  const subs = await Promise.all(dirs.map((d) => listDirSafe(`${folder}/${d.name}`)));
+  for (const sub of subs) {
+    pages.push(...sub.filter((e) => e.type === 'file' && e.name.endsWith('.md')));
   }
 
-  // Pull status chips from front matter (a few small requests; fine at this scale).
-  const withMeta = await Promise.all(pages.map(async (p) => {
-    try {
-      const { text } = await getFile(p.path);
-      const { meta } = parseFrontMatter(text);
-      return { ...p, status: meta.status };
-    } catch {
-      return { ...p, status: undefined };
-    }
-  }));
-
-  const rows = withMeta
+  const rows = pages
     .sort((a, b) => a.path.localeCompare(b.path))
-    .map((p) => h('div.row', {},
-      h('div.grow', {},
-        h('a', { href: `#/p/${p.path.split('/').map(encodeURIComponent).join('/')}` },
-          p.path.replace(`${folder}/`, '').replace(/\.md$/, '')),
-      ),
-      chip(p.status),
-    ));
+    .map((p) => {
+      const chipSlot = h('span.skeleton-chip');
+      getFile(p.path)
+        .then(({ text }) => {
+          const c = chip(parseFrontMatter(text).meta.status);
+          if (c) chipSlot.replaceWith(c); else chipSlot.remove();
+        })
+        .catch(() => chipSlot.remove());
+      return h('div.row', {},
+        h('div.grow', {},
+          h('a', { href: `#/p/${p.path.split('/').map(encodeURIComponent).join('/')}` },
+            p.path.replace(`${folder}/`, '').replace(/\.md$/, '')),
+        ),
+        chipSlot,
+      );
+    });
 
   return h('div', {},
     h('div.page-head', {},
@@ -47,7 +41,7 @@ export async function renderWorkspace(folder) {
       h('div.grow'),
       h('button', { class: 'primary', onclick: () => newPage(folder) }, '+ New page'),
     ),
-    h('div.meta-line', {}, `${withMeta.length} page${withMeta.length === 1 ? '' : 's'}`),
+    h('div.meta-line', {}, `${pages.length} page${pages.length === 1 ? '' : 's'}`),
     h('div.card.rowlist', {}, rows.length ? rows : h('div.hint', {}, 'No pages yet — create the first one.')),
   );
 }
