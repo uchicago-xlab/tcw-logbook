@@ -86,6 +86,13 @@ export async function putFile(path, text, message, sha) {
   });
 }
 
+export async function deleteFile(path, message, sha) {
+  return gh(`/repos/{repo}/contents/${encodePath(withRoot(path))}`, {
+    method: 'DELETE',
+    body: { message, sha },
+  });
+}
+
 function stripRoot(item) {
   const root = (loadConfig().root || '').replace(/^\/+|\/+$/g, '');
   if (!root || !item.path) return item;

@@ -1,9 +1,9 @@
 // Page view + editor. Every save is a commit; conflicts are detected via the
 // file's sha (if someone else saved since you opened it, GitHub returns 409).
 import { h, clear, chip, toast, timeago } from '../ui.js';
-import { getFile, putFile, getFileAsObjectURL } from '../github.js';
+import { getFile, putFile, deleteFile, getFileAsObjectURL } from '../github.js';
 import { render, parseFrontMatter } from '../markdown.js';
-import { currentUser } from '../state.js';
+import { currentUser, state, refreshWorkspaces } from '../state.js';
 
 const STATUSES = ['active', 'paused', 'done'];
 
@@ -35,17 +35,71 @@ function viewer(path, file) {
     : null;
   drawBody();
 
+  // moving is create-at-destination + delete-original; the pinned dashboard
+  // is found by exact path, so it stays put
+  const moveSlot = h('div');
+  const moveBtn = path === 'project/dashboard.md' ? null : h('button', {
+    onclick: async () => {
+      if (moveSlot.firstChild) { clear(moveSlot); return; }
+      if (!state.workspacesLoaded) await refreshWorkspaces();
+      moveSlot.append(moveForm(path, file, () => clear(moveSlot)));
+    },
+  }, 'Move');
+
   return h('div', {},
     h('div.page-head', {},
       h('h1', {}, titleOf(path)),
       chip(meta.status),
       h('div.grow'),
+      moveBtn,
       modeBtn,
       h('button', { class: 'primary', onclick: () => { location.hash = `#/e/${enc(path)}`; } }, 'Edit'),
     ),
     h('div.meta-line', {},
       h('a', { href: `#/w/${encodeURIComponent(folder)}` }, folder), ` / ${path.split('/').slice(1).join('/')}`),
+    moveSlot,
     content,
+  );
+}
+
+// ---------- move ----------
+function moveForm(path, file, onClose) {
+  const from = path.split('/')[0];
+  const name = path.split('/').pop();
+  const sel = h('select', {}, state.workspaces.filter((w) => w !== from)
+    .map((f) => h('option', { value: f }, f)));
+  const btn = h('button', { class: 'primary' }, 'Move');
+
+  btn.addEventListener('click', async () => {
+    const dest = sel.value;
+    const target = `${dest}/${name}`;
+    btn.disabled = true;
+    const user = await currentUser().catch(() => null);
+    const msg = `Move ${titleOf(path)} to ${dest}${user ? ` (by @${user.login})` : ''}`;
+    try {
+      await putFile(target, file.text, msg);
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.status === 422
+        ? `"${name}" already exists in ${dest} — rename one of them first.`
+        : `Move failed: ${err.message}`, 'error');
+      return;
+    }
+    try {
+      await deleteFile(path, msg, file.sha);
+      toast('Moved ✓');
+    } catch (err) {
+      toast(`Copied to ${dest}, but couldn't remove the original: ${err.message}`, 'error');
+    }
+    onClose();
+    state.workspacesLoaded = false; // sidebar counts may shift
+    location.hash = `#/p/${enc(target)}`;
+  });
+
+  return h('div.card.move-form', {},
+    h('span', { style: 'font-size:13.5px;color:var(--muted)' }, `Move “${name}” to:`),
+    sel, btn,
+    h('button', { onclick: onClose }, 'Cancel'),
   );
 }
 
