@@ -11,7 +11,7 @@ import { state } from '../state.js';
 export function renderHome() {
   const commits = listCommits(15).catch(() => []);
   const openIssues = listIssues('open').catch(() => []);
-  const pinned = getFile('project/dashboard.md').catch(() => null);
+  const pinned = getFile('Project/Dashboard.md').catch(() => null);
 
   return h('div', {},
     h('div.page-head', {}, h('h1', {}, 'Dashboard')),
@@ -38,15 +38,15 @@ function pinnedCard(pinned) {
   if (!pinned) {
     return h('div.card', {},
       h('h2', {}, '📌 Pinned'),
-      h('div.hint', {}, 'Create project/dashboard.md and it will appear here — milestones, deadlines, key links.'));
+      h('div.hint', {}, 'Create Project/Dashboard.md and it will appear here — milestones, deadlines, key links.'));
   }
   const md = h('div.md', { html: render(parseFrontMatter(pinned.text).body) });
-  hydrateImages(md, 'project/dashboard.md');
+  hydrateImages(md, 'Project/Dashboard.md');
   return h('div.card', {},
     h('div', { style: 'display:flex;align-items:baseline' },
       h('h2', {}, '📌 Pinned'),
       h('div.grow'),
-      h('a', { href: '#/e/project/dashboard.md', style: 'font-size:13px' }, 'edit')),
+      h('a', { href: '#/e/Project/Dashboard.md', style: 'font-size:13px' }, 'edit')),
     md);
 }
 
@@ -72,6 +72,12 @@ function activePagesCard() {
     await Promise.all(state.workspaces.map(async (ws) => {
       const entries = await listDir(ws).catch(() => []);
       const files = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md'));
+      // pages one subfolder down count too (workspace + find already recurse)
+      for (const d of entries.filter((e) => e.type === 'dir' && e.name !== 'assets')) {
+        for (const s of await listDir(d.path).catch(() => [])) {
+          if (s.type === 'file' && s.name.endsWith('.md')) files.push(s);
+        }
+      }
       await Promise.all(files.map(async (f) => {
         try {
           const { text } = await getFile(f.path);

@@ -37,7 +37,7 @@ export async function renderWorkspace(folder) {
 
   return h('div', {},
     h('div.page-head', {},
-      h('h1', {}, folder === 'project' ? 'Project (shared)' : folder),
+      h('h1', {}, folder === 'Project' ? 'Project (shared)' : folder),
       h('div.grow'),
       h('button', { class: 'primary', onclick: () => newPage(folder) }, '+ New page'),
     ),

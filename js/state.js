@@ -22,7 +22,7 @@ export async function refreshWorkspaces(onChange) {
     return items
       .filter((i) => i.type === 'dir' && !i.name.startsWith('.') && !IGNORED.has(i.name))
       .map((i) => i.name)
-      .sort((a, b) => (a === 'project' ? -1 : b === 'project' ? 1 : a.localeCompare(b)));
+      .sort((a, b) => (a === 'Project' ? -1 : b === 'Project' ? 1 : a.localeCompare(b)));
   }, (fresh) => { apply(fresh); if (onChange) onChange(); });
   apply(names);
   return names;

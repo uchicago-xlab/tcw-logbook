@@ -45,7 +45,7 @@ function viewer(path, file) {
   // moving is create-at-destination + delete-original; the pinned dashboard
   // is found by exact path, so it stays put
   const moveSlot = h('div');
-  const moveBtn = path === 'project/dashboard.md' ? null : h('button', {
+  const moveBtn = path === 'Project/Dashboard.md' ? null : h('button', {
     onclick: async () => {
       if (moveSlot.firstChild) { clear(moveSlot); return; }
       if (!state.workspacesLoaded) await refreshWorkspaces();

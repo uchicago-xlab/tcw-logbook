@@ -24,8 +24,13 @@ function setMain(view) {
   const main = document.getElementById('main');
   if (!main) return;
   const swap = () => { clear(main).append(view); };
-  if (document.startViewTransition) document.startViewTransition(swap); // crossfade where supported
-  else swap();
+  if (document.startViewTransition) {
+    // crossfade where supported; a skipped transition (rapid nav) is fine
+    const t = document.startViewTransition(swap);
+    t.ready.catch(() => {});
+    t.finished.catch(() => {});
+    t.updateCallbackDone.catch(() => {});
+  } else swap();
 }
 
 function sidebar() {
@@ -38,7 +43,7 @@ function sidebar() {
     h('a.navlink', {
       href: `#/w/${encodeURIComponent(w)}`,
       class: `navlink${route.startsWith(`#/w/${encodeURIComponent(w)}`) ? ' active' : ''}`,
-    }, w === 'project' ? '🗂 project (shared)' : w),
+    }, w === 'Project' ? '🗂 Project (shared)' : w),
   );
 
   return h('nav', { id: 'sidebar' },
