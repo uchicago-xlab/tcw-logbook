@@ -16,24 +16,33 @@ export async function renderWorkspace(folder) {
     pages.push(...sub.filter((e) => e.type === 'file' && e.name.endsWith('.md')));
   }
 
-  const rows = pages
-    .sort((a, b) => a.path.localeCompare(b.path))
-    .map((p) => {
-      const chipSlot = h('span.skeleton-chip');
-      getFile(p.path)
-        .then(({ text }) => {
-          const c = chip(parseFrontMatter(text).meta.status);
-          if (c) chipSlot.replaceWith(c); else chipSlot.remove();
-        })
-        .catch(() => chipSlot.remove());
-      return h('div.row', {},
-        h('div.grow', {},
-          h('a', { href: `#/p/${p.path.split('/').map(encodeURIComponent).join('/')}` },
-            p.path.replace(`${folder}/`, '').replace(/\.md$/, '')),
-        ),
-        chipSlot,
-      );
-    });
+  // group rows by subfolder: top-level pages first, then a header per folder
+  const rel = (p) => p.path.replace(`${folder}/`, '');
+  const row = (p) => {
+    const chipSlot = h('span.skeleton-chip');
+    getFile(p.path)
+      .then(({ text }) => {
+        const c = chip(parseFrontMatter(text).meta.status);
+        if (c) chipSlot.replaceWith(c); else chipSlot.remove();
+      })
+      .catch(() => chipSlot.remove());
+    return h('div.row', {},
+      h('div.grow', {},
+        h('a', { href: `#/p/${p.path.split('/').map(encodeURIComponent).join('/')}` },
+          rel(p).split('/').pop().replace(/\.md$/, '')),
+      ),
+      chipSlot,
+    );
+  };
+  const byPath = (a, b) => a.path.localeCompare(b.path);
+  const subNames = [...new Set(pages.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
+  const rows = [
+    ...pages.filter((p) => !rel(p).includes('/')).sort(byPath).map(row),
+    ...subNames.flatMap((sub) => [
+      h('div.subhead', {}, `📁 ${sub}`),
+      ...pages.filter((p) => rel(p).startsWith(`${sub}/`)).sort(byPath).map(row),
+    ]),
+  ];
 
   return h('div', {},
     h('div.page-head', {},

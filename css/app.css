@@ -300,3 +300,6 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 /* ---------- inline move form ---------- */
 .move-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
 .move-form select { width: auto; }
+
+/* subfolder headers in workspace page lists */
+.rowlist .subhead { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 14px 0 4px; }
