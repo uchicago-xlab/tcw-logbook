@@ -32,6 +32,13 @@ function unprotect(html) {
   return html.replace(/\x00(\d+)\x00/g, (_, i) => stash[Number(i)]);
 }
 
+// Team-annotation convention: a paragraph or list item that starts with
+// initials + colon ("AW: …") renders in the annotation color. 2–3 capitals
+// only, so TODO:/NOTE: don't match.
+const ANNOT = /^[A-Z]{2,3}:\s/;
+const annotate = (src, html) =>
+  (ANNOT.test(src) ? `<span class="annot">${html}</span>` : html);
+
 // ---------- inline rendering ----------
 function inline(text) {
   let out = esc(text);
@@ -171,7 +178,8 @@ export function render(markdown) {
       !/^\s*$/.test(lines[i]) &&
       !/^(#{1,6}\s|```|>|(\s*)([-*+]|\d+\.)\s|\s*\$\$\s*$)/.test(lines[i])
     ) buf.push(lines[i++]);
-    out.push(`<p>${inline(buf.join('\n'))}</p>`);
+    const para = buf.join('\n');
+    out.push(`<p>${annotate(para, inline(para))}</p>`);
   }
 
   const html = out.join('\n');
@@ -222,7 +230,7 @@ function list(lines, start, depth) {
       content = `<input type="checkbox" disabled${checked ? ' checked' : ''}> ${inline(task[2])}`;
       items.push(`<li class="task${checked ? ' done' : ''}">${content}`);
     } else {
-      items.push(`<li>${inline(content)}`);
+      items.push(`<li>${annotate(content, inline(content))}`);
     }
     i++;
   }

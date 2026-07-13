@@ -16,6 +16,7 @@
   --amber-soft: #fffbeb;
   --gray-soft: #f1f5f9;
   --math: #7c3aed;
+  --annot: rgb(108, 136, 249);
   --danger: #b91c1c;
   --danger-soft: #fef2f2;
   --danger-line: #fecaca;
@@ -41,6 +42,7 @@
     --amber-soft: #2e2410;
     --gray-soft: #23282d;
     --math: #b79df8;
+    --annot: rgb(108, 136, 249);
     --danger: #f87171;
     --danger-soft: #2c1517;
     --danger-line: #5b2426;
@@ -303,3 +305,6 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 
 /* subfolder headers in workspace page lists */
 .rowlist .subhead { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 14px 0 4px; }
+
+/* team annotations: paragraphs / list items starting with initials, e.g. "AW: ..." */
+.md .annot { color: var(--annot); }
