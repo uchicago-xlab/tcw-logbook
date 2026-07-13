@@ -210,6 +210,17 @@ function list(lines, start, depth) {
   let i = start;
 
   while (i < lines.length) {
+    // an indented "> quote" after an item nests inside that item
+    const bq = lines[i].match(/^(\s+)>\s?/);
+    if (bq && items.length && bq[1].length > indent) {
+      const buf = [];
+      while (i < lines.length && /^\s+>\s?/.test(lines[i])) {
+        buf.push(lines[i].replace(/^\s+>\s?/, ''));
+        i++;
+      }
+      items[items.length - 1] += `<blockquote>${render(buf.join('\n'))}</blockquote>`;
+      continue;
+    }
     const m = lines[i].match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
     if (!m) break;
     const ind = m[1].length;
