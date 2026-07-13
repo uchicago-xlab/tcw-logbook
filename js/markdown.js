@@ -39,11 +39,19 @@ function inline(text) {
   // math first, so its contents are never touched by other rules
   out = out.replace(/\$\$([^$]+?)\$\$/g, (_, tex) =>
     protect(renderMath(tex, true)));
-  out = out.replace(/\$([^$\n]+?)\$/g, (_, tex) =>
+  // Inline math, pandoc-style so prices don't become math: the opening $
+  // must not be followed by a digit or space ("$50–70K" is currency), the
+  // content can't start/end with whitespace, and the closing $ must not be
+  // followed by a digit ("the ~$9–13K base").
+  out = out.replace(/\$([^\s\d$][^$\n]*?[^\s$]|[^\s\d$])\$(?!\d)/g, (_, tex) =>
     protect(renderMath(tex, false)));
 
   // inline code
   out = out.replace(/`([^`]+)`/g, (_, code) => protect(`<code>${code}</code>`));
+
+  // the one HTML tag we honor: <br> (escaped above, and after code
+  // protection so a literal `<br>` in backticks stays text) → line break
+  out = out.replace(/&lt;br\s*\/?\s*&gt;/gi, () => protect('<br>'));
 
   // images ![alt](src)
   out = out.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) =>
