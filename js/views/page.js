@@ -100,6 +100,8 @@ function moveForm(path, file, onClose) {
     }
     invalidate(`page:${path}`);
     invalidate(`page:${target}`);
+    invalidate(`ws:${from}`);
+    invalidate(`ws:${dest}`);
     onClose();
     state.workspacesLoaded = false; // sidebar counts may shift
     location.hash = `#/p/${enc(target)}`;

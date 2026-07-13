@@ -1,48 +1,66 @@
 // A member's workspace: their markdown pages (one folder, optional subfolders).
-// Rows render as soon as the directory listing is in; the status chips need a
-// getFile per page for front matter, so they stream in afterwards.
-import { h, chip, toast } from '../ui.js';
+// The page list is session-cached (instant on revisit, revalidated in the
+// background); status chips read through the same cache as the page view, so
+// chips are instant for anything already seen — and browsing a list warms
+// every page on it.
+import { h, clear, chip, toast } from '../ui.js';
 import { listDir, getFile, putFile } from '../github.js';
 import { parseFrontMatter } from '../markdown.js';
 import { currentUser } from '../state.js';
+import { cached, invalidate } from '../cache.js';
 
 export async function renderWorkspace(folder) {
-  const entries = await listDirSafe(folder);
-  const pages = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md'));
-  // one level of subfolders, listed in parallel
-  const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
-  const subs = await Promise.all(dirs.map((d) => listDirSafe(`${folder}/${d.name}`)));
-  for (const sub of subs) {
-    pages.push(...sub.filter((e) => e.type === 'file' && e.name.endsWith('.md')));
-  }
+  // flat, sorted list of page paths — minimal + stable so the cache's
+  // change detection doesn't fire on metadata churn
+  const fetchPaths = async () => {
+    const entries = await listDirSafe(folder);
+    const paths = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md')).map((e) => e.path);
+    const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
+    const subs = await Promise.all(dirs.map((d) => listDirSafe(`${folder}/${d.name}`)));
+    for (const sub of subs) {
+      paths.push(...sub.filter((e) => e.type === 'file' && e.name.endsWith('.md')).map((e) => e.path));
+    }
+    return paths.sort();
+  };
 
-  // group rows by subfolder: top-level pages first, then a header per folder
-  const rel = (p) => p.path.replace(`${folder}/`, '');
-  const row = (p) => {
-    const chipSlot = h('span.skeleton-chip');
-    getFile(p.path)
-      .then(({ text }) => {
-        const c = chip(parseFrontMatter(text).meta.status);
-        if (c) chipSlot.replaceWith(c); else chipSlot.remove();
-      })
-      .catch(() => chipSlot.remove());
+  const rel = (p) => p.replace(`${folder}/`, '');
+  const row = (path) => {
+    const chipWrap = h('span', {}, h('span.skeleton-chip'));
+    const setChip = ({ text }) => {
+      const c = chip(parseFrontMatter(text).meta.status);
+      clear(chipWrap);
+      if (c) chipWrap.append(c);
+    };
+    cached(`page:${path}`, () => getFile(path), setChip)
+      .then(setChip)
+      .catch(() => clear(chipWrap));
     return h('div.row', {},
       h('div.grow', {},
-        h('a', { href: `#/p/${p.path.split('/').map(encodeURIComponent).join('/')}` },
-          rel(p).split('/').pop().replace(/\.md$/, '')),
+        h('a', { href: `#/p/${path.split('/').map(encodeURIComponent).join('/')}` },
+          rel(path).split('/').pop().replace(/\.md$/, '')),
       ),
-      chipSlot,
+      chipWrap,
     );
   };
-  const byPath = (a, b) => a.path.localeCompare(b.path);
-  const subNames = [...new Set(pages.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
-  const rows = [
-    ...pages.filter((p) => !rel(p).includes('/')).sort(byPath).map(row),
-    ...subNames.flatMap((sub) => [
-      h('div.subhead', {}, `📁 ${sub}`),
-      ...pages.filter((p) => rel(p).startsWith(`${sub}/`)).sort(byPath).map(row),
-    ]),
-  ];
+
+  const count = h('div.meta-line');
+  const listEl = h('div.card.rowlist');
+  const draw = (paths) => {
+    count.textContent = `${paths.length} page${paths.length === 1 ? '' : 's'}`;
+    const subNames = [...new Set(paths.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
+    clear(listEl).append(...(paths.length ? [
+      ...paths.filter((p) => !rel(p).includes('/')).map(row),
+      ...subNames.flatMap((sub) => [
+        h('div.subhead', {}, `📁 ${sub}`),
+        ...paths.filter((p) => rel(p).startsWith(`${sub}/`)).map(row),
+      ]),
+    ] : [h('div.hint', {}, 'No pages yet — create the first one.')]));
+  };
+
+  const paths = await cached(`ws:${folder}`, fetchPaths, (fresh) => {
+    if (document.body.contains(listEl)) draw(fresh);
+  });
+  draw(paths);
 
   return h('div', {},
     h('div.page-head', {},
@@ -50,8 +68,8 @@ export async function renderWorkspace(folder) {
       h('div.grow'),
       h('button', { class: 'primary', onclick: () => newPage(folder) }, '+ New page'),
     ),
-    h('div.meta-line', {}, `${pages.length} page${pages.length === 1 ? '' : 's'}`),
-    h('div.card.rowlist', {}, rows.length ? rows : h('div.hint', {}, 'No pages yet — create the first one.')),
+    count,
+    listEl,
   );
 }
 
@@ -72,6 +90,7 @@ export async function newPage(folder) {
   const content = `---\nstatus: active\n---\n\n# ${title}\n\n_${today}_\n\n`;
   try {
     await putFile(path, content, `New page: ${title}${user ? ` (by @${user.login})` : ''}`);
+    invalidate(`ws:${folder}`);
     location.hash = `#/e/${path.split('/').map(encodeURIComponent).join('/')}`;
   } catch (err) {
     toast(err.status === 422 ? 'A page with that name already exists.' : `Couldn't create page: ${err.message}`, 'error');
