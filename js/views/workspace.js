@@ -45,9 +45,11 @@ export async function renderWorkspace(folder) {
 
   const count = h('div.meta-line');
   const listEl = h('div.card.rowlist');
+  const formSlot = h('div');
+  let subNames = [];
   const draw = (paths) => {
     count.textContent = `${paths.length} page${paths.length === 1 ? '' : 's'}`;
-    const subNames = [...new Set(paths.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
+    subNames = [...new Set(paths.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
     clear(listEl).append(...(paths.length ? [
       ...paths.filter((p) => !rel(p).includes('/')).map(row),
       ...subNames.flatMap((sub) => [
@@ -66,11 +68,57 @@ export async function renderWorkspace(folder) {
     h('div.page-head', {},
       h('h1', {}, folder === 'Project' ? 'Project (shared)' : folder),
       h('div.grow'),
-      h('button', { class: 'primary', onclick: () => newPage(folder) }, '+ New page'),
+      h('button', {
+        class: 'primary',
+        onclick: () => {
+          if (formSlot.firstChild) clear(formSlot);
+          else formSlot.append(pageForm(folder, subNames, () => clear(formSlot)));
+        },
+      }, '+ New page'),
     ),
     count,
+    formSlot,
     listEl,
   );
+}
+
+// Inline creation form: title + destination folder (workspace top level or
+// any existing subfolder).
+function pageForm(folder, subNames, onClose) {
+  const title = h('input', { type: 'text', placeholder: 'Page title', autocomplete: 'off' });
+  const dest = h('select', {},
+    h('option', { value: '' }, `${folder} (top level)`),
+    subNames.map((s) => h('option', { value: s }, `📁 ${s}`)));
+  const btn = h('button', { class: 'primary' }, 'Create');
+
+  const submit = async () => {
+    const t = title.value.trim();
+    if (!t) { title.focus(); return; }
+    btn.disabled = true;
+    const slug = t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
+    const path = `${folder}/${dest.value ? `${dest.value}/` : ''}${slug}.md`;
+    const user = await currentUser().catch(() => null);
+    const today = new Date().toISOString().slice(0, 10);
+    const content = `---\nstatus: active\n---\n\n# ${t}\n\n_${today}_\n\n`;
+    try {
+      await putFile(path, content, `New page: ${t}${user ? ` (by @${user.login})` : ''}`);
+      invalidate(`ws:${folder}`);
+      onClose();
+      location.hash = `#/e/${path.split('/').map(encodeURIComponent).join('/')}`;
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.status === 422 ? 'A page with that name already exists there.' : `Couldn't create page: ${err.message}`, 'error');
+    }
+  };
+  btn.addEventListener('click', submit);
+  title.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+  const form = h('div.card.page-form', {},
+    title, dest, btn,
+    h('button', { onclick: onClose }, 'Cancel'),
+  );
+  setTimeout(() => title.focus(), 0);
+  return form;
 }
 
 async function listDirSafe(path) {
@@ -80,19 +128,3 @@ async function listDirSafe(path) {
   }
 }
 
-export async function newPage(folder) {
-  const title = prompt('Page title:');
-  if (!title) return;
-  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled';
-  const path = `${folder}/${slug}.md`;
-  const user = await currentUser().catch(() => null);
-  const today = new Date().toISOString().slice(0, 10);
-  const content = `---\nstatus: active\n---\n\n# ${title}\n\n_${today}_\n\n`;
-  try {
-    await putFile(path, content, `New page: ${title}${user ? ` (by @${user.login})` : ''}`);
-    invalidate(`ws:${folder}`);
-    location.hash = `#/e/${path.split('/').map(encodeURIComponent).join('/')}`;
-  } catch (err) {
-    toast(err.status === 422 ? 'A page with that name already exists.' : `Couldn't create page: ${err.message}`, 'error');
-  }
-}

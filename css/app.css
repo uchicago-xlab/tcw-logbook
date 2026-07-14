@@ -300,8 +300,9 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 .mapzoom-pct { font-size: 12.5px; color: var(--muted); min-width: 42px; text-align: center; }
 
 /* ---------- inline move form ---------- */
-.move-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
-.move-form select { width: auto; }
+.move-form, .page-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.move-form select, .page-form select { width: auto; }
+.page-form input[type='text'] { flex: 1; min-width: 220px; width: auto; }
 
 /* subfolder headers in workspace page lists */
 .rowlist .subhead { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 14px 0 4px; }
