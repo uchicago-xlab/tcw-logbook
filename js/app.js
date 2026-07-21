@@ -6,6 +6,7 @@ import { renderHome } from './views/home.js';
 import { renderWorkspace } from './views/workspace.js';
 import { renderPage } from './views/page.js';
 import { renderTasks } from './views/tasks.js';
+import { renderSpending } from './views/spending.js';
 import { renderFind } from './views/find.js';
 import { state, refreshWorkspaces } from './state.js';
 
@@ -50,6 +51,7 @@ function sidebar() {
     h('div.brand', {}, h('a', { href: '#/' }, 'Logbook')),
     link('#/', 'Dashboard'),
     link('#/tasks', 'Tasks'),
+    link('#/spending', 'Spending'),
     h('div.section', {}, 'Workspaces'),
     wsLinks.length ? wsLinks : h('div.hint', { style: 'padding:0 10px' }, 'none yet'),
     h('div.foot', {},
@@ -89,6 +91,7 @@ async function route() {
   let view;
   if (head === '' || head === undefined) view = await safe(renderHome);
   else if (head === 'tasks') view = await safe(renderTasks);
+  else if (head === 'spending') view = await safe(renderSpending);
   else if (head === 'w') view = await safe(() => renderWorkspace(decodeURIComponent(rest.join('/'))));
   else if (head === 'p') view = await safe(() => renderPage(rest.map(decodeURIComponent).join('/'), false));
   else if (head === 'e') view = await safe(() => renderPage(rest.map(decodeURIComponent).join('/'), true));
