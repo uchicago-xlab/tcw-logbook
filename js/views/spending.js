@@ -11,6 +11,8 @@ import { currentUser } from '../state.js';
 const FILE = 'Project/Planning/spending.json';
 const STATUSES = ['spent', 'burned', 'allocated'];
 
+let groupByPerson = false; // remembered per session, like the tasks view mode
+
 const fetchLedger = async () => JSON.parse((await getFile(FILE)).text);
 
 export async function renderSpending() {
@@ -43,13 +45,18 @@ export async function renderSpending() {
   function draw() {
     const totals = computeTotals(entries);
     count.textContent = `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`;
+    toggle.textContent = groupByPerson ? 'By date' : 'By person';
     clear(container).append(
       tiles(totals),
       entries.length
-        ? ledgerTable(entries, totals, { onEdit: openForm, onDelete: del })
+        ? ledgerTable(entries, totals, { onEdit: openForm, onDelete: del, groupByPerson })
         : h('div.card', {}, h('div.hint', { style: 'margin:0' }, 'No entries yet — add the first one with “+ Add entry”.')),
     );
   }
+
+  const toggle = h('button', {
+    onclick: () => { groupByPerson = !groupByPerson; draw(); },
+  });
 
   // The single write path. Always fetches fresh: the sha drives conflict
   // detection, and applying the mutation to just-read data means concurrent
@@ -201,6 +208,7 @@ export async function renderSpending() {
     h('div.page-head', {},
       h('h1', {}, 'Spending'),
       h('div.grow'),
+      toggle,
       h('button', {
         class: 'primary',
         onclick: () => { if (formSlot.firstChild) clear(formSlot); else openForm(); },
@@ -279,9 +287,58 @@ function tiles(totals) {
   );
 }
 
-function ledgerTable(entries, totals, { onEdit, onDelete }) {
+// Per-person rollup: gone = their spent/burned; unused = clamped remainder
+// of their allocations (drawdowns count against the allocation's owner-agnostic
+// remaining, but are attributed to the drawer's own gone total).
+function personTotals(entries, totals) {
+  const map = new Map();
+  const get = (who) => {
+    const k = (who || '').trim() || 'unattributed';
+    if (!map.has(k)) map.set(k, { gone: 0, goneApprox: false, unused: 0, unusedApprox: false });
+    return map.get(k);
+  };
+  for (const e of entries) {
+    const p = get(e.who);
+    if (e.status === 'allocated') {
+      const r = totals.remaining.get(e.id);
+      p.unused += Math.max(0, r.value);
+      p.unusedApprox = p.unusedApprox || (r.value > 0 && r.approx);
+    } else {
+      p.gone += e.amount;
+      p.goneApprox = p.goneApprox || !!e.approx;
+    }
+  }
+  return map;
+}
+
+function ledgerTable(entries, totals, { onEdit, onDelete, groupByPerson }) {
   const byId = new Map(entries.map((e) => [e.id, e]));
-  const sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+  let sorted = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+
+  let groupHeads = new Map(); // index in `sorted` → header row, when grouping
+  if (groupByPerson) {
+    const persons = personTotals(entries, totals);
+    const key = (e) => ((e.who || '').trim() || 'unattributed');
+    // biggest spender first, then alphabetical for ties
+    const order = [...persons.entries()].sort((a, b) =>
+      (b[1].gone - a[1].gone) || a[0].localeCompare(b[0])).map(([k]) => k);
+    const rank = new Map(order.map((k, i) => [k, i]));
+    sorted = sorted.sort((a, b) =>
+      (rank.get(key(a)) - rank.get(key(b))) || b.date.localeCompare(a.date));
+    let prev = null;
+    sorted.forEach((e, i) => {
+      const k = key(e);
+      if (k === prev) return;
+      prev = k;
+      const p = persons.get(k);
+      groupHeads.set(i, h('tr.spend-group', {}, h('td', { colspan: '6' },
+        k,
+        h('span.spend-group-totals', {},
+          `${fmt(p.gone, p.goneApprox)} spent/burned`,
+          p.unused > 0 ? ` · ${fmt(p.unused, p.unusedApprox)} allocated unused` : ''),
+      )));
+    });
+  }
 
   const rows = sorted.map((e) => {
     const r = e.status === 'allocated' ? totals.remaining.get(e.id) : null;
@@ -308,11 +365,18 @@ function ledgerTable(entries, totals, { onEdit, onDelete }) {
     );
   });
 
+  const body = [];
+  rows.forEach((row, i) => {
+    const head = groupHeads.get(i);
+    if (head) body.push(head);
+    body.push(row);
+  });
+
   return h('div.card', { style: 'padding:6px 8px' },
     h('table.ledger', {},
       h('thead', {}, h('tr', {},
         h('th', {}, 'Date'), h('th', {}, 'What'), h('th', {}, 'Who'),
         h('th.num', {}, 'Amount'), h('th', {}, 'Status'), h('th'))),
-      h('tbody', {}, rows),
+      h('tbody', {}, body),
     ));
 }

@@ -330,3 +330,7 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 .ledger .actions button { padding: 1px 8px; font-size: 12px; margin-left: 4px; }
 .spend-remaining { font-size: 12px; color: var(--muted); font-family: var(--sans); font-weight: 400; }
 .spend-remaining.neg { color: var(--danger); }
+
+/* spending grouped-by-person headers */
+.ledger tr.spend-group td { padding: 14px 8px 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: none; }
+.ledger tr.spend-group .spend-group-totals { margin-left: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; }
