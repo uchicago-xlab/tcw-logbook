@@ -69,15 +69,17 @@ function activePagesCard() {
   let found = 0;
 
   (async () => {
-    await Promise.all(state.workspaces.map(async (ws) => {
-      const entries = await listDir(ws).catch(() => []);
+    // pages at any depth count (workspace + find recurse the same way)
+    const gather = async (dir, depth) => {
+      if (depth > 4) return [];
+      const entries = await listDir(dir).catch(() => []);
       const files = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md'));
-      // pages one subfolder down count too (workspace + find already recurse)
-      for (const d of entries.filter((e) => e.type === 'dir' && e.name !== 'assets')) {
-        for (const s of await listDir(d.path).catch(() => [])) {
-          if (s.type === 'file' && s.name.endsWith('.md')) files.push(s);
-        }
-      }
+      const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
+      const nested = await Promise.all(dirs.map((d) => gather(d.path, depth + 1)));
+      return files.concat(...nested);
+    };
+    await Promise.all(state.workspaces.map(async (ws) => {
+      const files = await gather(ws, 0);
       await Promise.all(files.map(async (f) => {
         try {
           const { text } = await getFile(f.path);

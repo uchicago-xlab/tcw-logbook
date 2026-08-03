@@ -13,17 +13,15 @@ const slugify = (s) =>
 export async function renderFind(title) {
   const slug = slugify(title);
   const matches = [];
-  for (const ws of state.workspaces) {
-    const entries = await listDir(ws).catch(() => []);
-    for (const e of entries) {
+  const walk = async (dir, depth) => {
+    if (depth > 4) return;
+    const entries = await listDir(dir).catch(() => []);
+    await Promise.all(entries.map(async (e) => {
       if (e.type === 'file' && slugify(e.name) === slug) matches.push(e.path);
-      if (e.type === 'dir' && e.name !== 'assets') {
-        for (const s of await listDir(e.path).catch(() => [])) {
-          if (s.type === 'file' && slugify(s.name) === slug) matches.push(s.path);
-        }
-      }
-    }
-  }
+      else if (e.type === 'dir' && e.name !== 'assets') await walk(e.path, depth + 1);
+    }));
+  };
+  await Promise.all(state.workspaces.map((ws) => walk(ws, 0)));
 
   if (matches.length === 1) {
     location.replace(`#/p/${matches[0].split('/').map(encodeURIComponent).join('/')}`);

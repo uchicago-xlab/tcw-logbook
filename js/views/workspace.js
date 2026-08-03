@@ -10,17 +10,18 @@ import { currentUser } from '../state.js';
 import { cached, invalidate } from '../cache.js';
 
 export async function renderWorkspace(folder) {
-  // flat, sorted list of page paths — minimal + stable so the cache's
-  // change detection doesn't fire on metadata churn
+  // flat, sorted list of page paths at any depth — minimal + stable so the
+  // cache's change detection doesn't fire on metadata churn
   const fetchPaths = async () => {
-    const entries = await listDirSafe(folder);
-    const paths = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md')).map((e) => e.path);
-    const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
-    const subs = await Promise.all(dirs.map((d) => listDirSafe(`${folder}/${d.name}`)));
-    for (const sub of subs) {
-      paths.push(...sub.filter((e) => e.type === 'file' && e.name.endsWith('.md')).map((e) => e.path));
-    }
-    return paths.sort();
+    const walk = async (dir, depth) => {
+      if (depth > 4) return [];
+      const entries = await listDirSafe(dir);
+      const files = entries.filter((e) => e.type === 'file' && e.name.endsWith('.md')).map((e) => e.path);
+      const dirs = entries.filter((e) => e.type === 'dir' && e.name !== 'assets');
+      const nested = await Promise.all(dirs.map((d) => walk(d.path, depth + 1)));
+      return files.concat(...nested);
+    };
+    return (await walk(folder, 0)).sort();
   };
 
   const rel = (p) => p.replace(`${folder}/`, '');
@@ -43,27 +44,52 @@ export async function renderWorkspace(folder) {
     );
   };
 
+  // nested folder tree from relative paths: {pages: [rel], subs: Map<name, node>}
+  const buildTree = (rels) => {
+    const root = { pages: [], subs: new Map() };
+    for (const r of rels) {
+      const parts = r.split('/');
+      let cur = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur.subs.has(parts[i])) cur.subs.set(parts[i], { pages: [], subs: new Map() });
+        cur = cur.subs.get(parts[i]);
+      }
+      cur.pages.push(r);
+    }
+    return root;
+  };
+  const countPages = (node) =>
+    node.pages.length + [...node.subs.values()].reduce((n, s) => n + countPages(s), 0);
+
+  // pages first, then a dropdown per subfolder (recursive) — open state
+  // remembered for the session, keyed by the folder's full path
+  const renderNode = (node, prefix) => [
+    ...node.pages.sort().map((r) => row(`${folder}/${r}`)),
+    ...[...node.subs.keys()].sort().map((name) => {
+      const sub = node.subs.get(name);
+      const full = prefix ? `${prefix}/${name}` : name;
+      const key = `logbook:wsopen:${folder}/${full}`;
+      const det = h('details.subgroup', sessionStorage.getItem(key) === '1' ? { open: '' } : {},
+        h('summary.subhead', {}, `📁 ${name}`, h('span.subcount', {}, `${countPages(sub)}`)),
+        ...renderNode(sub, full),
+      );
+      det.addEventListener('toggle', () => sessionStorage.setItem(key, det.open ? '1' : '0'));
+      return det;
+    }),
+  ];
+
   const count = h('div.meta-line');
   const listEl = h('div.card.rowlist');
   const formSlot = h('div');
   let subNames = [];
   const draw = (paths) => {
     count.textContent = `${paths.length} page${paths.length === 1 ? '' : 's'}`;
-    subNames = [...new Set(paths.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
-    clear(listEl).append(...(paths.length ? [
-      ...paths.filter((p) => !rel(p).includes('/')).map(row),
-      ...subNames.map((sub) => {
-        const inside = paths.filter((p) => rel(p).startsWith(`${sub}/`));
-        // dropdown per subfolder — open state remembered for the session
-        const key = `logbook:wsopen:${folder}/${sub}`;
-        const det = h('details.subgroup', sessionStorage.getItem(key) === '1' ? { open: '' } : {},
-          h('summary.subhead', {}, `📁 ${sub}`, h('span.subcount', {}, `${inside.length}`)),
-          ...inside.map(row),
-        );
-        det.addEventListener('toggle', () => sessionStorage.setItem(key, det.open ? '1' : '0'));
-        return det;
-      }),
-    ] : [h('div.hint', {}, 'No pages yet — create the first one.')]));
+    // every folder prefix at any depth, for the new-page destination picker
+    subNames = [...new Set(paths.map(rel).filter((r) => r.includes('/'))
+      .map((r) => r.slice(0, r.lastIndexOf('/'))))].sort();
+    clear(listEl).append(...(paths.length
+      ? renderNode(buildTree(paths.map(rel)), '')
+      : [h('div.hint', {}, 'No pages yet — create the first one.')]));
   };
 
   const paths = await cached(`ws:${folder}`, fetchPaths, (fresh) => {

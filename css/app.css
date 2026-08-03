@@ -341,3 +341,6 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 .rowlist details.subgroup summary.subhead::before { content: '▸'; font-size: 11px; transition: transform 0.15s ease; }
 .rowlist details.subgroup[open] summary.subhead::before { transform: rotate(90deg); }
 .rowlist .subcount { font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }
+
+/* nested subfolder dropdowns indent one step per level */
+.rowlist details.subgroup details.subgroup { margin-left: 20px; }
