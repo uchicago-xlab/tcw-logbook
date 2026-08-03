@@ -175,8 +175,12 @@ function editor(path, file) {
   ta.value = body;
   const preview = h('div.editor-preview.md', { html: render(body) });
   const saveBtn = h('button', { class: 'primary' }, 'Save');
+  // custom statuses (superseded, blocked, …) stay selectable so a save
+  // doesn't silently rewrite them to "active"
+  const statusOptions = meta.status && !STATUSES.includes(meta.status)
+    ? [meta.status, ...STATUSES] : STATUSES;
   const statusSel = h('select', { style: 'width:auto' },
-    STATUSES.map((s) => {
+    statusOptions.map((s) => {
       const o = h('option', { value: s }, s);
       if ((meta.status || 'active') === s) o.selected = true;
       return o;

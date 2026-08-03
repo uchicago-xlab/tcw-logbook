@@ -155,10 +155,13 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
   padding: 1px 9px;
   border-radius: 99px;
   text-transform: lowercase;
+  background: var(--gray-soft);
+  color: var(--muted);
 }
 .chip-active, .chip-doing { background: var(--green-soft); color: var(--green); }
 .chip-paused, .chip-todo { background: var(--amber-soft); color: var(--amber); }
 .chip-done { background: var(--gray-soft); color: var(--muted); }
+.chip-blocked { background: var(--danger-soft); color: var(--danger); }
 /* spending: spent is the normal end state of money (neutral, like done);
    burned is waste and the only status that shouts; allocated is pending. */
 .chip-spent { background: var(--gray-soft); color: var(--muted); }
