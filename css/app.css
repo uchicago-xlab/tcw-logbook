@@ -334,3 +334,10 @@ label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
 /* spending grouped-by-person headers */
 .ledger tr.spend-group td { padding: 14px 8px 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: none; }
 .ledger tr.spend-group .spend-group-totals { margin-left: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+/* collapsible subfolder dropdowns in workspace lists */
+.rowlist details.subgroup summary.subhead { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; user-select: none; }
+.rowlist details.subgroup summary.subhead::-webkit-details-marker { display: none; }
+.rowlist details.subgroup summary.subhead::before { content: '▸'; font-size: 11px; transition: transform 0.15s ease; }
+.rowlist details.subgroup[open] summary.subhead::before { transform: rotate(90deg); }
+.rowlist .subcount { font-weight: 400; color: var(--muted); text-transform: none; letter-spacing: 0; }

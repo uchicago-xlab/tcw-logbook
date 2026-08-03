@@ -52,10 +52,17 @@ export async function renderWorkspace(folder) {
     subNames = [...new Set(paths.filter((p) => rel(p).includes('/')).map((p) => rel(p).split('/')[0]))].sort();
     clear(listEl).append(...(paths.length ? [
       ...paths.filter((p) => !rel(p).includes('/')).map(row),
-      ...subNames.flatMap((sub) => [
-        h('div.subhead', {}, `📁 ${sub}`),
-        ...paths.filter((p) => rel(p).startsWith(`${sub}/`)).map(row),
-      ]),
+      ...subNames.map((sub) => {
+        const inside = paths.filter((p) => rel(p).startsWith(`${sub}/`));
+        // dropdown per subfolder — open state remembered for the session
+        const key = `logbook:wsopen:${folder}/${sub}`;
+        const det = h('details.subgroup', sessionStorage.getItem(key) === '1' ? { open: '' } : {},
+          h('summary.subhead', {}, `📁 ${sub}`, h('span.subcount', {}, `${inside.length}`)),
+          ...inside.map(row),
+        );
+        det.addEventListener('toggle', () => sessionStorage.setItem(key, det.open ? '1' : '0'));
+        return det;
+      }),
     ] : [h('div.hint', {}, 'No pages yet — create the first one.')]));
   };
 
