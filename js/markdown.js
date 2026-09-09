@@ -84,6 +84,19 @@ function inline(text) {
   return out;
 }
 
+// Inline-only rendering, for text that must not be wrapped in a block — a
+// checklist item on the board. Manages the protect() stash exactly as
+// render() does, so a nested call inside a render stays protected.
+export function renderInline(text) {
+  const isRoot = stash === null;
+  if (isRoot) stash = [];
+  const html = inline(text);
+  if (!isRoot) return html;
+  const result = unprotect(html);
+  stash = null;
+  return result;
+}
+
 function renderMath(tex, display) {
   if (window.katex) {
     try {

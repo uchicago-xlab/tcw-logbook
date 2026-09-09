@@ -49,7 +49,6 @@ export function b64decode(b64) {
 // ---------- identity / repo ----------
 export const getUser = () => gh('/user');
 export const getRepo = () => gh('/repos/{repo}');
-export const getCollaborators = () => gh('/repos/{repo}/collaborators?per_page=100');
 
 // ---------- contents ----------
 // All content paths are relative to the configured root folder (if any), so
@@ -101,22 +100,4 @@ function stripRoot(item) {
 
 function encodePath(path) {
   return path.split('/').filter(Boolean).map(encodeURIComponent).join('/');
-}
-
-// ---------- issues (tasks) ----------
-export const listIssues = (state = 'open') =>
-  gh(`/repos/{repo}/issues?state=${state}&per_page=100`);
-
-export const createIssue = (title, { assignees = [], labels = [], body = '' } = {}) =>
-  gh('/repos/{repo}/issues', { method: 'POST', body: { title, assignees, labels, body } });
-
-export const updateIssue = (number, patch) =>
-  gh(`/repos/{repo}/issues/${number}`, { method: 'PATCH', body: patch });
-
-// ---------- activity ----------
-// When a root folder is configured, only show commits touching it, so a
-// shared project repo's code commits don't drown out note activity.
-export function listCommits(n = 15) {
-  const root = (loadConfig().root || '').replace(/^\/+|\/+$/g, '');
-  return gh(`/repos/{repo}/commits?per_page=${n}${root ? `&path=${encodeURIComponent(root)}` : ''}`);
 }

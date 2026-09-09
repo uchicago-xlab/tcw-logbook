@@ -190,7 +190,7 @@ export async function renderSpending() {
     save.addEventListener('click', submit);
     what.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 
-    const form = h('div.card.task-form', {},
+    const form = h('div.card.entry-form', {},
       date, what, who, amount,
       h('label', { style: 'display:flex;align-items:center;gap:5px;margin:0;font-weight:400;font-size:13px' }, approx, '≈'),
       status, allocWrap,

@@ -2,10 +2,9 @@
 import { isConfigured, loadConfig } from './config.js';
 import { h, clear, spinner } from './ui.js';
 import { renderSetup } from './views/setup.js';
-import { renderHome } from './views/home.js';
 import { renderWorkspace } from './views/workspace.js';
 import { renderPage } from './views/page.js';
-import { renderTasks } from './views/tasks.js';
+import { renderTodo } from './views/todo.js';
 import { renderSpending } from './views/spending.js';
 import { renderFind } from './views/find.js';
 import { state, refreshWorkspaces } from './state.js';
@@ -49,8 +48,7 @@ function sidebar() {
 
   return h('nav', { id: 'sidebar' },
     h('div.brand', {}, h('a', { href: '#/' }, 'Logbook')),
-    link('#/', 'Dashboard'),
-    link('#/tasks', 'Tasks'),
+    link('#/', 'Board'),
     link('#/spending', 'Spending'),
     h('div.section', {}, 'Workspaces'),
     wsLinks.length ? wsLinks : h('div.hint', { style: 'padding:0 10px' }, 'none yet'),
@@ -89,8 +87,7 @@ async function route() {
   }
 
   let view;
-  if (head === '' || head === undefined) view = await safe(renderHome);
-  else if (head === 'tasks') view = await safe(renderTasks);
+  if (head === '' || head === undefined) view = await safe(renderTodo);
   else if (head === 'spending') view = await safe(renderSpending);
   else if (head === 'w') view = await safe(() => renderWorkspace(decodeURIComponent(rest.join('/'))));
   else if (head === 'p') view = await safe(() => renderPage(rest.map(decodeURIComponent).join('/'), false));
